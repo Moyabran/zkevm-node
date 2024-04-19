@@ -18,8 +18,6 @@ type Config struct {
 	// SyncBlockProtection specify the state to sync (lastest, finalized or safe)
 	SyncBlockProtection string `mapstructure:"SyncBlockProtection"`
 
-	// L1SyncCheckL2BlockHash if is true when a batch is closed is force to check  L2Block hash against trustedNode (only apply for permissionless)
-	L1SyncCheckL2BlockHash bool `mapstructure:"L1SyncCheckL2BlockHash"`
 	// L1SyncCheckL2BlockNumberhModulus is the modulus used to choose the l2block to check
 	// a modules 5, for instance, means check all l2block multiples of 5 (10,15,20,...)
 	L1SyncCheckL2BlockNumberhModulus uint64 `mapstructure:"L1SyncCheckL2BlockNumberhModulus"`
