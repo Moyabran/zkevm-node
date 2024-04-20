@@ -700,12 +700,8 @@ func (s *ClientSynchronizer) ProcessBlockRange(blocks []etherman.Block, order ma
 		// Add block information
 		err = s.state.AddBlock(s.ctx, &b, dbTx)
 		if err != nil {
-			// If any goes wrong we ensure that the state is rollbacked and reset the l1InfoTree
-			s.state.ResetL1InfoTree()
 			log.Errorf("error storing block. BlockNumber: %d, error: %v", blocks[i].BlockNumber, err)
-			rollbackErr := dbTx.Rollback(s.ctx)
-			if rollbackErr != nil {
-				log.Errorf("error rolling back state to store block. BlockNumber: %d, rollbackErr: %s, error : %v", blocks[i].BlockNumber, rollbackErr.Error(), err)
+			if rollbackErr := s.rollBackAndResetL1InfoTree(dbTx); rollbackErr != nil {
 				return rollbackErr
 			}
 			return err
@@ -725,12 +721,8 @@ func (s *ClientSynchronizer) ProcessBlockRange(blocks []etherman.Block, order ma
 			// Process event received from l1
 			err := s.l1EventProcessors.Process(s.ctx, forkIdTyped, element, &blocks[i], dbTx)
 			if err != nil {
-				log.Error("error: ", err)
-				// If any goes wrong we ensure that the state is rollbacked and reset the l1InfoTree
-				s.state.ResetL1InfoTree()
-				rollbackErr := dbTx.Rollback(s.ctx)
-				if rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-					log.Warnf("error rolling back state to store block. BlockNumber: %d, rollbackErr: %s, error : %v", blocks[i].BlockNumber, rollbackErr.Error(), err)
+				log.Errorf("error processing event: %s. Error: %v", element.Name, err)
+				if rollbackErr := s.rollBackAndResetL1InfoTree(dbTx); rollbackErr != nil {
 					return rollbackErr
 				}
 				return err
@@ -739,28 +731,32 @@ func (s *ClientSynchronizer) ProcessBlockRange(blocks []etherman.Block, order ma
 		log.Debug("Checking FlushID to commit L1 data to db")
 		err = s.checkFlushID(dbTx)
 		if err != nil {
-			// If any goes wrong we ensure that the state is rollbacked and reset the l1InfoTree
-			s.state.ResetL1InfoTree()
 			log.Errorf("error checking flushID. Error: %v", err)
-			rollbackErr := dbTx.Rollback(s.ctx)
-			if rollbackErr != nil {
-				log.Errorf("error rolling back state. RollbackErr: %s, Error : %v", rollbackErr.Error(), err)
+			if rollbackErr := s.rollBackAndResetL1InfoTree(dbTx); rollbackErr != nil {
 				return rollbackErr
 			}
 			return err
 		}
 		err = dbTx.Commit(s.ctx)
 		if err != nil {
-			// If any goes wrong we ensure that the state is rollbacked and reset the l1InfoTree
-			s.state.ResetL1InfoTree()
 			log.Errorf("error committing state to store block. BlockNumber: %d, err: %v", blocks[i].BlockNumber, err)
-			rollbackErr := dbTx.Rollback(s.ctx)
-			if rollbackErr != nil {
-				log.Errorf("error rolling back state to store block. BlockNumber: %d, rollbackErr: %s, error : %v", blocks[i].BlockNumber, rollbackErr.Error(), err)
+			if rollbackErr := s.rollBackAndResetL1InfoTree(dbTx); rollbackErr != nil {
 				return rollbackErr
 			}
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *ClientSynchronizer) rollBackAndResetL1InfoTree(dbTx pgx.Tx) error {
+	log.Debug("Rolling back the state...")
+	// If any goes wrong we ensure that the state is rollbacked and reset the l1InfoTree
+	s.state.ResetL1InfoTree()
+	rollbackErr := dbTx.Rollback(s.ctx)
+	if rollbackErr != nil {
+		log.Errorf("error rolling back state to latest stored block. RollbackErr: %s", rollbackErr.Error())
+		return rollbackErr
 	}
 	return nil
 }
